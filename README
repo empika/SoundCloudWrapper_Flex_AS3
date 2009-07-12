@@ -1,7 +1,21 @@
 HERRO!
 
+This software is licensed under the Apache License 2.0, please see http://www.apache.org/licenses/LICENSE-2.0
+
+---------------
+
 This is an ActionScript3 library for Flex implements a wrapper for SoundCloud.com's API including its OAuth stuff.
 
-I will add more to this text file soon.
+This library depends on two other libraries:
+iotashans oauth library for AS3 distributed under the Apache License 2.0
+http://code.google.com/p/oauth-as3/
+http://www.apache.org/licenses/LICENSE-2.0
 
-Disclaimer: I am not an AS programmer, look out shenanigans about! 
+Hurlants crypto library for AS3 distributed under the New BSD License
+http://code.google.com/p/as3crypto/
+
+---------------
+
+Disclaimers:
+I am not an AS programmer, look out shenanigans about!
+If i have done something wrong license-wise, please get in touch and I will rectify the problem as soon as possible.
