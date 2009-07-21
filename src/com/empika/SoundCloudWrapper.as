@@ -132,7 +132,12 @@ package com.empika
 			trace( "authorizeUser() : oaAuthToken.secret : " + this.oaAuthToken.secret );
 			var strUserAuthorizationURL: String = this.soundCloudURL + this.userAuthorizationURL + "?oauth_token=" + oaAuthToken.key
 			var userAuthReq: URLRequest = new URLRequest( strUserAuthorizationURL );
+			
+			var scwEvent: SoundCloudWrapperDataEvent = new SoundCloudWrapperDataEvent(SoundCloudWrapperDataEvent.AUTHORIZED);
+
 			navigateToURL( userAuthReq );
+			trace("navigated");
+			dispatchEvent(scwEvent);
 		}
 		
 		/*
@@ -166,15 +171,16 @@ package com.empika
 			// get our result
 			var sqlResult:SQLResult = this.sqlStatement.getResult();
 			if (sqlResult.data == null){
+				trace("checkAccessTokenResult() : did not retrieve local access token");
 				this.hasAccess = false;
 			}
 			else{
 				this.oaAccessToken.key = sqlResult.data[0].accessKey;
 				this.oaAccessToken.secret = sqlResult.data[0].accessSecret;
 				
-				trace( "requestAccessToken() : w00t, got our token from 'access_tokens'" );
-				trace( "requestAccessToken() : oaAccessToken.key : " + this.oaAccessToken.key);
-				trace( "requestAccessToken() : oaAccessToken.secret : " + this.oaAccessToken.secret);
+				trace( "checkAccessTokenResult() : w00t, got our token from 'access_tokens'" );
+				trace( "checkAccessTokenResult() : oaAccessToken.key : " + this.oaAccessToken.key);
+				trace( "checkAccessTokenResult() : oaAccessToken.secret : " + this.oaAccessToken.secret);
 				
 				this.hasAccess = true;
 				
@@ -197,8 +203,8 @@ package com.empika
 			trace( "requestAccessToken() : strRequestURL : " + strRequestURL );
 			accessURLRequest.method = URLRequestMethod.GET;
 			var accessURLLoader: URLLoader = new URLLoader( accessURLRequest );
-			accessURLLoader.dataFormat = URLLoaderDataFormat.VARIABLES;
-			
+			accessURLLoader.dataFormat = URLLoaderDataFormat.TEXT;
+			accessURLLoader.addEventListener(IOErrorEvent.IO_ERROR, requestAccessTokenError);
 			accessURLLoader.addEventListener(Event.COMPLETE, requestAccessTokenComplete);
 			accessURLLoader.addEventListener(HTTPStatusEvent.HTTP_RESPONSE_STATUS, trcHTTP);
 			try{
@@ -210,55 +216,96 @@ package com.empika
 				
 		}
 		
+		private function requestAccessTokenError( event: Event ):void{
+			trace("BING!");
+		}
+		
 		private function requestAccessTokenComplete( event: Event ):void{
 			// get our tokens from our returned data
 			var urlLoadData:URLLoader = event.target as URLLoader;
-			this.oaAccessToken.key = urlLoadData.data['oauth_token'];
-			this.oaAccessToken.secret = urlLoadData.data['oauth_token_secret'];
-			this.sqlStatement.text =
-				"CREATE TABLE IF NOT EXISTS access_tokens (" +
-				"	accessId INTEGER PRIMARY KEY AUTOINCREMENT, " +
-				"	accessKey TEXT, " +
-				"	accessSecret TEXT, " +
-				"   using_sandbox BOOL " +
-				" ) ";
-			try{
-				this.sqlStatement.execute();
-				trace( "requestAccessTokenComplete() : created SQLite table 'access_tokens'" );
-			}
-			catch( error: SQLError )
-			{
-				trace( "requestAccessTokenComplete() : error creating table" );
-				trace( "error: " + error.message );
-				trace( "details: " + error.details );
-				return;
-			}
+			var scwEvent: SoundCloudWrapperDataEvent = new SoundCloudWrapperDataEvent(SoundCloudWrapperDataEvent.ERROR);
+				scwEvent.error = "Request Access Token Complete - #226 : Sorry, failure in getting the access token. Please report this error to the application creator.";
+			var response:String = urlLoadData.data;
+			var scwEventAccess: SoundCloudWrapperDataEvent = new SoundCloudWrapperDataEvent(SoundCloudWrapperDataEvent.ACCESS);
+				//scwEvent.error = "Request Access Token Complete - #226 : Sorry, failure in getting the access token. Please report this error to the application creator.";
 			
-			this.sqlStatement.text = "DELETE FROM access_tokens WHERE using_sandbox = " + this.usingSandbox;
-			try{
-				this.sqlStatement.execute();
-				trace( "requestAccessTokenComplete() : deleted existing access token" );
+			trace( "response: " + response );
+			// see if we acctually got somthing back
+			if( response != "" && response != " " ){
+				var re:RegExp = /(?P<prop>[^&=]+)=(?P<val>[^&]*)/g;
+				var result:Object;
+				
+				var resultOBJ:Object = { };
+				var dataDecode: Boolean = true;
+				// loop through our returned data
+				
+				do
+				{
+					result = re.exec(response);
+					if (!result){
+						// gah, couldnt parse the response, lets bail!
+						dataDecode = false;
+						
+					}
+					else{
+						resultOBJ[result.prop] = result.val;
+					}
+				}
+				while (dataDecode);
+				
+				this.oaAccessToken.key = resultOBJ.oauth_token;
+				this.oaAccessToken.secret = resultOBJ.oauth_token_secret;
+				if( this.oaAccessToken.key != null && this.oaAccessToken.secret != null ){
+					this.sqlStatement.text =
+						"CREATE TABLE IF NOT EXISTS access_tokens (" +
+						"	accessId INTEGER PRIMARY KEY AUTOINCREMENT, " +
+						"	accessKey TEXT, " +
+						"	accessSecret TEXT, " +
+						"   using_sandbox BOOL " +
+						" ) ";
+					try{
+						this.sqlStatement.execute();
+						trace( "requestAccessTokenComplete() : created SQLite table 'access_tokens'" );
+					}
+					catch( error: SQLError )
+					{
+						trace( "requestAccessTokenComplete() : error creating table" );
+						trace( "error: " + error.message );
+						trace( "details: " + error.details );
+						return;
+					}
+					
+					this.sqlStatement.text = "DELETE FROM access_tokens WHERE using_sandbox = " + this.usingSandbox;
+					try{
+						this.sqlStatement.execute();
+						trace( "requestAccessTokenComplete() : deleted existing access token" );
+					}
+					catch( error: SQLError )
+					{
+						trace( "error deleting data" );
+						trace( "error: " + error.message );
+						trace( "details: " + error.details );
+						return;
+					}
+					
+					this.sqlStatement.text = "INSERT INTO access_tokens (accessKey, accessSecret, using_sandbox)" +
+						"	VALUES ( '" + this.oaAccessToken.key + "', '" + this.oaAccessToken.secret + "'," + this.usingSandbox + ") ";
+					try{
+						this.sqlStatement.execute();
+						trace( "requestAccessTokenComplete() : inserted access_token" );
+					}
+					catch( error: SQLError )
+					{
+						trace( "requestAccessTokenComplete() : error inserting access_token" );
+						trace( "error: " + error.message );
+						trace( "details: " + error.details );
+						return;
+					}
+				}
+				dispatchEvent( scwEventAccess );
 			}
-			catch( error: SQLError )
-			{
-				trace( "error deleting data" );
-				trace( "error: " + error.message );
-				trace( "details: " + error.details );
-				return;
-			}
-			
-			this.sqlStatement.text = "INSERT INTO access_tokens (accessKey, accessSecret, using_sandbox)" +
-				"	VALUES ( '" + this.oaAccessToken.key + "', '" + this.oaAccessToken.secret + "'," + this.usingSandbox + ") ";
-			try{
-				this.sqlStatement.execute();
-				trace( "requestAccessTokenComplete() : inserted access_token" );
-			}
-			catch( error: SQLError )
-			{
-				trace( "requestAccessTokenComplete() : error inserting access_token" );
-				trace( "error: " + error.message );
-				trace( "details: " + error.details );
-				return;
+			else{
+				dispatchEvent(scwEvent);
 			}
 		}
 		
@@ -343,8 +390,8 @@ package com.empika
 				// gwaarn, send that track and data!
 				if( fileReference ){
 					//fileReference.addEventListener(HTTPStatusEvent.HTTP_RESPONSE_STATUS, trcHTTPUpload );
-					fileReference.addEventListener(ProgressEvent.PROGRESS, progressHandler);
-					fileReference.addEventListener(DataEvent.UPLOAD_COMPLETE_DATA, postedResource);
+					//fileReference.addEventListener(ProgressEvent.PROGRESS, progressHandler);
+					fileReference.addEventListener(DataEvent.UPLOAD_COMPLETE_DATA, postedFile);
 					//fileReference.addEventListener(Event.COMPLETE, eventComplete);
 					fileReference.upload( resourceURLRequest, "track[asset_data]" );
 				}
@@ -357,11 +404,25 @@ package com.empika
 			
 		}
 		
-		private function postedResource( event: DataEvent):void{
+		private function postedResource( event: Event):void{
+			var loader:URLLoader = URLLoader(event.target) as URLLoader;
+            //trace("completeHandler: " + loader.data);
+
 			trace("postedResource() : posted given resource");
 			//var theLoader: URLLoader = event.currentTarget as URLLoader;
 			var scwEvent: SoundCloudWrapperDataEvent = new SoundCloudWrapperDataEvent(SoundCloudWrapperDataEvent.LOADED);
-			scwEvent.data = event.data;
+			scwEvent.data = loader.data;
+			dispatchEvent(scwEvent);
+		}
+		
+		private function postedFile( event: DataEvent):void{
+			var fileRef: FileReference = event.target as FileReference;
+            //trace("completeHandler: " + loader.data);
+
+			trace("postedResource() : posted given resource");
+			//var theLoader: URLLoader = event.currentTarget as URLLoader;
+			var scwEvent: SoundCloudWrapperDataEvent = new SoundCloudWrapperDataEvent(SoundCloudWrapperDataEvent.LOADED);
+			scwEvent.fileRef = fileRef;
 			dispatchEvent(scwEvent);
 		}
 		
@@ -381,7 +442,7 @@ package com.empika
 		 * Wrapper function to kick off the authentication process 
 		 * using the functions in this class
 		 */
-		public function authenticate():void{
+		public function getRequest():void{
 			this.requestAuthToken();
 		}
 		

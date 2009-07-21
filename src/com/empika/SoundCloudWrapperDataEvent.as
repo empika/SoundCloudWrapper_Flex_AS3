@@ -2,6 +2,7 @@ package com.empika
 {
 // import normal
 	import flash.events.Event;
+	import flash.net.FileReference;
 	
 	public class SoundCloudWrapperDataEvent extends Event 
 	{
@@ -9,10 +10,13 @@ package com.empika
 		public static const ERROR:String 		= 'error';
 		public static const ERROR_XML:String 	= 'errorXml';
 		public static const ERROR_JSON:String 	= 'errorXml';
+		public static const AUTHORIZED:String 	= 'authorized';
+		public static const ACCESS:String	 	= 'access';
 		
 		private var _json:Object;
 		private var _error:String;
 		private var _data:String;
+		private var _fileRef:FileReference;
 		
 		// constructor
 		public function SoundCloudWrapperDataEvent($type:String, $bubbles:Boolean = false, $cancelable:Boolean = false):void 
@@ -48,6 +52,16 @@ package com.empika
 		public function set error( error:String):void
 		{
 			_error = error;
+		}
+		
+		public function get fileRef():FileReference
+		{
+			return _fileRef;
+		}
+		
+		public function set fileRef( fileRef:FileReference):void
+		{
+			_fileRef = fileRef;
 		}
 		
 	}
